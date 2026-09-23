@@ -1,0 +1,19 @@
+*.csv
+
+# Allow synthetic research data
+!synthetic_data/
+!synthetic_data/synthetic_asean_stroke_v2.csv
+
+# Never upload MIMIC
+mimic_iv_csv/
+data/
+
+*.csv.gz
+*.zip
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.streamlit/secrets.toml
