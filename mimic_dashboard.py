@@ -7,24 +7,23 @@ from pathlib import Path
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="Stroke AI Decision Support",
+    page_title="AdaptStroke AI",
     page_icon="🧠",
     layout="wide"
 )
 
 
 # ============================================================
-# DIRECTORIES
+# PATHS
 # ============================================================
 
 BASE_DIR = Path(__file__).parent
 
 DATA_DIR = BASE_DIR / "mimic_iv_csv"
-
 HOSP_DIR = DATA_DIR / "hosp"
 ICU_DIR = DATA_DIR / "icu"
 
@@ -34,14 +33,24 @@ SYNTHETIC_FILE = (
     / "synthetic_asean_stroke_v2.csv"
 )
 
-MODEL_DIR = (
-    BASE_DIR
-    / "stroke_models"
+MODEL_DIR = BASE_DIR / "stroke_models"
+
+
+# ============================================================
+# ENVIRONMENT DETECTION
+# ============================================================
+
+MIMIC_AVAILABLE = (
+    (HOSP_DIR / "patients.csv").exists()
+    and
+    (HOSP_DIR / "admissions.csv").exists()
+    and
+    (HOSP_DIR / "diagnoses_icd.csv").exists()
 )
 
 
 # ============================================================
-# LOAD CSV
+# GENERAL LOADERS
 # ============================================================
 
 @st.cache_data
@@ -53,89 +62,14 @@ def load_csv(folder, filename):
         return pd.DataFrame()
 
     try:
-
         return pd.read_csv(
             path,
             low_memory=False
         )
 
-    except Exception as e:
-
-        st.warning(
-            f"Could not load {filename}: {e}"
-        )
-
+    except Exception:
         return pd.DataFrame()
 
-
-# ============================================================
-# LOAD MIMIC DATA
-# ============================================================
-
-patients = load_csv(
-    HOSP_DIR,
-    "patients.csv"
-)
-
-admissions = load_csv(
-    HOSP_DIR,
-    "admissions.csv"
-)
-
-diagnoses = load_csv(
-    HOSP_DIR,
-    "diagnoses_icd.csv"
-)
-
-diagnosis_dictionary = load_csv(
-    HOSP_DIR,
-    "d_icd_diagnoses.csv"
-)
-
-labevents = load_csv(
-    HOSP_DIR,
-    "labevents.csv"
-)
-
-lab_dictionary = load_csv(
-    HOSP_DIR,
-    "d_labitems.csv"
-)
-
-procedures = load_csv(
-    HOSP_DIR,
-    "procedures_icd.csv"
-)
-
-procedure_dictionary = load_csv(
-    HOSP_DIR,
-    "d_icd_procedures.csv"
-)
-
-prescriptions = load_csv(
-    HOSP_DIR,
-    "prescriptions.csv"
-)
-
-icustays = load_csv(
-    ICU_DIR,
-    "icustays.csv"
-)
-
-chartevents = load_csv(
-    ICU_DIR,
-    "chartevents.csv"
-)
-
-item_dictionary = load_csv(
-    ICU_DIR,
-    "d_items.csv"
-)
-
-
-# ============================================================
-# LOAD SYNTHETIC DATA
-# ============================================================
 
 @st.cache_data
 def load_synthetic_data():
@@ -144,16 +78,10 @@ def load_synthetic_data():
         return pd.DataFrame()
 
     return pd.read_csv(
-        SYNTHETIC_FILE
+        SYNTHETIC_FILE,
+        low_memory=False
     )
 
-
-synthetic_df = load_synthetic_data()
-
-
-# ============================================================
-# LOAD AI MODELS
-# ============================================================
 
 @st.cache_resource
 def load_model(filename):
@@ -167,6 +95,12 @@ def load_model(filename):
         path
     )
 
+
+# ============================================================
+# LOAD SYNTHETIC DATA + MODELS
+# ============================================================
+
+synthetic_df = load_synthetic_data()
 
 M1 = load_model(
     "M1_HT_Risk.joblib"
@@ -190,7 +124,120 @@ M5 = load_model(
 
 
 # ============================================================
-# MODEL PREDICTION FUNCTIONS
+# LOAD MIMIC ONLY WHEN AVAILABLE
+# ============================================================
+
+if MIMIC_AVAILABLE:
+
+    patients = load_csv(
+        HOSP_DIR,
+        "patients.csv"
+    )
+
+    admissions = load_csv(
+        HOSP_DIR,
+        "admissions.csv"
+    )
+
+    diagnoses = load_csv(
+        HOSP_DIR,
+        "diagnoses_icd.csv"
+    )
+
+    diagnosis_dictionary = load_csv(
+        HOSP_DIR,
+        "d_icd_diagnoses.csv"
+    )
+
+    labevents = load_csv(
+        HOSP_DIR,
+        "labevents.csv"
+    )
+
+    lab_dictionary = load_csv(
+        HOSP_DIR,
+        "d_labitems.csv"
+    )
+
+    prescriptions = load_csv(
+        HOSP_DIR,
+        "prescriptions.csv"
+    )
+
+    procedures = load_csv(
+        HOSP_DIR,
+        "procedures_icd.csv"
+    )
+
+    procedure_dictionary = load_csv(
+        HOSP_DIR,
+        "d_icd_procedures.csv"
+    )
+
+    icustays = load_csv(
+        ICU_DIR,
+        "icustays.csv"
+    )
+
+else:
+
+    patients = pd.DataFrame()
+    admissions = pd.DataFrame()
+    diagnoses = pd.DataFrame()
+    diagnosis_dictionary = pd.DataFrame()
+    labevents = pd.DataFrame()
+    lab_dictionary = pd.DataFrame()
+    prescriptions = pd.DataFrame()
+    procedures = pd.DataFrame()
+    procedure_dictionary = pd.DataFrame()
+    icustays = pd.DataFrame()
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def yes_no(value):
+
+    try:
+        return (
+            "Yes"
+            if int(value) == 1
+            else "No"
+        )
+
+    except Exception:
+        return str(value)
+
+
+def safe_int(value, default=0):
+
+    try:
+
+        if pd.isna(value):
+            return default
+
+        return int(value)
+
+    except Exception:
+        return default
+
+
+def safe_float(value, default=0.0):
+
+    try:
+
+        if pd.isna(value):
+            return default
+
+        return float(value)
+
+    except Exception:
+        return default
+
+
+# ============================================================
+# MODEL INPUT
 # ============================================================
 
 def prepare_patient_for_model(
@@ -202,26 +249,30 @@ def prepare_patient_for_model(
         "features"
     ]
 
-    data = {}
+    values = {}
 
     for feature in features:
 
         if feature in patient_row.index:
 
-            data[feature] = [
+            values[feature] = [
                 patient_row[feature]
             ]
 
         else:
 
-            data[feature] = [
+            values[feature] = [
                 np.nan
             ]
 
     return pd.DataFrame(
-        data
+        values
     )
 
+
+# ============================================================
+# PREDICTION
+# ============================================================
 
 def predict_binary(
     patient_row,
@@ -241,9 +292,8 @@ def predict_binary(
     ]
 
     probability = (
-        pipeline.predict_proba(
-            X
-        )[0, 1]
+        pipeline
+        .predict_proba(X)[0, 1]
     )
 
     return float(
@@ -264,13 +314,12 @@ def predict_mrs(
         model_object
     )
 
-    pipeline = model_object[
-        "pipeline"
-    ]
-
-    prediction = pipeline.predict(
-        X
-    )[0]
+    prediction = (
+        model_object[
+            "pipeline"
+        ]
+        .predict(X)[0]
+    )
 
     return int(
         prediction
@@ -279,6 +328,10 @@ def predict_mrs(
 
 # ============================================================
 # RISK LABEL
+#
+# Descriptive only.
+# These are prototype display bands,
+# NOT validated clinical thresholds.
 # ============================================================
 
 def risk_label(probability):
@@ -292,33 +345,162 @@ def risk_label(probability):
     elif probability < 0.20:
         return "Intermediate model-estimated risk"
 
-    else:
-        return "Higher model-estimated risk"
+    return "Higher model-estimated risk"
 
 
 # ============================================================
-# YES / NO DISPLAY
+# APPROXIMATE LOCAL MODEL EXPLANATION
+#
+# Perturb one variable at a time and calculate change
+# in prediction.
+#
+# This is model sensitivity / local perturbation,
+# NOT causal importance.
 # ============================================================
 
-def yes_no(value):
+def local_binary_explanation(
+    patient,
+    model_object,
+    reference_df,
+    max_features=8
+):
 
-    try:
+    if model_object is None:
+        return pd.DataFrame()
 
-        return (
-            "Yes"
-            if int(value) == 1
-            else "No"
+    baseline = predict_binary(
+        patient,
+        model_object
+    )
+
+    results = []
+
+    features = model_object.get(
+        "features",
+        []
+    )
+
+    for feature in features:
+
+        if feature not in patient.index:
+            continue
+
+        if feature not in reference_df.columns:
+            continue
+
+        original = patient[
+            feature
+        ]
+
+        modified = patient.copy()
+
+        column = reference_df[
+            feature
+        ]
+
+
+        # ----------------------------------------------------
+        # NUMERIC VARIABLE
+        # ----------------------------------------------------
+
+        if pd.api.types.is_numeric_dtype(
+            column
+        ):
+
+            reference_value = (
+                column
+                .dropna()
+                .median()
+            )
+
+        else:
+
+            mode = (
+                column
+                .dropna()
+                .mode()
+            )
+
+            if len(mode) == 0:
+                continue
+
+            reference_value = (
+                mode.iloc[0]
+            )
+
+
+        if pd.isna(
+            reference_value
+        ):
+            continue
+
+
+        modified[
+            feature
+        ] = reference_value
+
+
+        try:
+
+            alternative = predict_binary(
+                modified,
+                model_object
+            )
+
+        except Exception:
+            continue
+
+
+        effect = (
+            baseline
+            - alternative
         )
 
-    except:
 
-        return str(
-            value
+        results.append(
+            {
+                "Feature":
+                    feature,
+
+                "Patient value":
+                    original,
+
+                "Reference value":
+                    reference_value,
+
+                "Local contribution":
+                    effect,
+
+                "Absolute contribution":
+                    abs(effect)
+            }
         )
 
 
+    if not results:
+        return pd.DataFrame()
+
+
+    result_df = pd.DataFrame(
+        results
+    )
+
+
+    result_df = (
+        result_df
+        .sort_values(
+            "Absolute contribution",
+            ascending=False
+        )
+        .head(max_features)
+    )
+
+
+    return result_df
+
+
 # ============================================================
-# BUILD MIMIC STROKE COHORT
+# MIMIC STROKE COHORT
 # ============================================================
 
 @st.cache_data
@@ -334,6 +516,7 @@ def build_stroke_cohort(
 
     dx = diagnoses.copy()
 
+
     if not diagnosis_dictionary.empty:
 
         dx = dx.merge(
@@ -346,8 +529,12 @@ def build_stroke_cohort(
         )
 
 
-    dx["icd_code_clean"] = (
-        dx["icd_code"]
+    dx[
+        "icd_code_clean"
+    ] = (
+        dx[
+            "icd_code"
+        ]
         .astype(str)
         .str.upper()
         .str.replace(
@@ -359,13 +546,17 @@ def build_stroke_cohort(
     )
 
 
-    dx["icd_version"] = pd.to_numeric(
-        dx["icd_version"],
+    dx[
+        "icd_version"
+    ] = pd.to_numeric(
+        dx[
+            "icd_version"
+        ],
         errors="coerce"
     )
 
 
-    def classify_stroke(row):
+    def classify(row):
 
         code = row[
             "icd_code_clean"
@@ -376,8 +567,6 @@ def build_stroke_cohort(
         ]
 
 
-        # ICD-10
-
         if version == 10:
 
             if code.startswith(
@@ -387,33 +576,20 @@ def build_stroke_cohort(
                     "I62"
                 )
             ):
-
-                return (
-                    "Hemorrhagic stroke"
-                )
-
+                return "Hemorrhagic stroke"
 
             if code.startswith(
                 "I63"
             ):
-
-                return (
-                    "Ischemic stroke"
-                )
-
+                return "Ischemic stroke"
 
             if code.startswith(
                 "I64"
             ):
-
-                return (
-                    "Unspecified stroke"
-                )
+                return "Unspecified stroke"
 
 
-        # ICD-9
-
-        elif version == 9:
+        if version == 9:
 
             if code.startswith(
                 (
@@ -422,28 +598,17 @@ def build_stroke_cohort(
                     "432"
                 )
             ):
-
-                return (
-                    "Hemorrhagic stroke"
-                )
-
+                return "Hemorrhagic stroke"
 
             if code.startswith(
                 "434"
             ):
-
-                return (
-                    "Ischemic stroke"
-                )
-
+                return "Ischemic stroke"
 
             if code.startswith(
                 "436"
             ):
-
-                return (
-                    "Unspecified stroke"
-                )
+                return "Unspecified stroke"
 
 
         return None
@@ -452,7 +617,7 @@ def build_stroke_cohort(
     dx[
         "stroke_type"
     ] = dx.apply(
-        classify_stroke,
+        classify,
         axis=1
     )
 
@@ -466,7 +631,7 @@ def build_stroke_cohort(
 
     if not admissions.empty:
 
-        admission_columns = [
+        cols = [
             c
             for c in [
                 "subject_id",
@@ -474,7 +639,6 @@ def build_stroke_cohort(
                 "admittime",
                 "dischtime",
                 "admission_type",
-                "admission_location",
                 "discharge_location",
                 "race",
                 "hospital_expire_flag"
@@ -485,7 +649,7 @@ def build_stroke_cohort(
 
         stroke = stroke.merge(
             admissions[
-                admission_columns
+                cols
             ],
             on=[
                 "subject_id",
@@ -497,13 +661,12 @@ def build_stroke_cohort(
 
     if not patients.empty:
 
-        patient_columns = [
+        cols = [
             c
             for c in [
                 "subject_id",
                 "gender",
                 "anchor_age",
-                "anchor_year",
                 "dod"
             ]
             if c in patients.columns
@@ -512,7 +675,7 @@ def build_stroke_cohort(
 
         stroke = stroke.merge(
             patients[
-                patient_columns
+                cols
             ],
             on="subject_id",
             how="left"
@@ -522,12 +685,18 @@ def build_stroke_cohort(
     return stroke
 
 
-stroke_cohort = build_stroke_cohort(
-    diagnoses,
-    diagnosis_dictionary,
-    admissions,
-    patients
-)
+if MIMIC_AVAILABLE:
+
+    stroke_cohort = build_stroke_cohort(
+        diagnoses,
+        diagnosis_dictionary,
+        admissions,
+        patients
+    )
+
+else:
+
+    stroke_cohort = pd.DataFrame()
 
 
 # ============================================================
@@ -535,630 +704,130 @@ stroke_cohort = build_stroke_cohort(
 # ============================================================
 
 st.sidebar.title(
-    "🧠 Stroke AI"
+    "🧠 AdaptStroke AI"
 )
 
 st.sidebar.caption(
-    "Research Prototype"
+    "Adaptive Stroke Decision-Support Research Prototype"
 )
+
+
+# ============================================================
+# AUTOMATIC MENU
+# ============================================================
+
+if MIMIC_AVAILABLE:
+
+    pages = [
+        "Stroke AI Simulator",
+        "MIMIC Patient Explorer",
+        "MIMIC Stroke Cohort"
+    ]
+
+else:
+
+    pages = [
+        "Stroke AI Simulator"
+    ]
+
 
 page = st.sidebar.radio(
     "Navigation",
-    [
-        "MIMIC Patient Explorer",
-        "MIMIC Stroke Cohort",
-        "Stroke AI Simulator"
-    ]
+    pages
 )
 
 
-# ============================================================
-# PAGE 1
-#
-# MIMIC PATIENT EXPLORER
-# ============================================================
+if not MIMIC_AVAILABLE:
 
-if page == "MIMIC Patient Explorer":
-
-    st.title(
-        "🏥 MIMIC-IV Patient Explorer"
+    st.sidebar.success(
+        "Public research mode"
     )
 
-    st.caption(
-        "Explore patient-level information "
-        "from the locally stored MIMIC-IV dataset."
+    st.sidebar.caption(
+        "Restricted MIMIC-IV files are not "
+        "loaded in this deployment."
     )
 
+else:
 
-    if patients.empty:
-
-        st.error(
-            "patients.csv was not found."
-        )
-
-        st.write(
-            f"Expected folder: {HOSP_DIR}"
-        )
-
-        st.stop()
-
-
-    patient_ids = sorted(
-        patients[
-            "subject_id"
-        ]
-        .dropna()
-        .unique()
-    )
-
-
-    selected_patient = st.selectbox(
-        "Select patient",
-        patient_ids
-    )
-
-
-    patient = patients[
-        patients[
-            "subject_id"
-        ] == selected_patient
-    ].copy()
-
-
-    patient_admissions = (
-        admissions[
-            admissions[
-                "subject_id"
-            ] == selected_patient
-        ].copy()
-        if not admissions.empty
-        else pd.DataFrame()
-    )
-
-
-    patient_diagnoses = (
-        diagnoses[
-            diagnoses[
-                "subject_id"
-            ] == selected_patient
-        ].copy()
-        if not diagnoses.empty
-        else pd.DataFrame()
-    )
-
-
-    patient_labs = (
-        labevents[
-            labevents[
-                "subject_id"
-            ] == selected_patient
-        ].copy()
-        if not labevents.empty
-        else pd.DataFrame()
-    )
-
-
-    patient_prescriptions = (
-        prescriptions[
-            prescriptions[
-                "subject_id"
-            ] == selected_patient
-        ].copy()
-        if not prescriptions.empty
-        else pd.DataFrame()
-    )
-
-
-    patient_procedures = (
-        procedures[
-            procedures[
-                "subject_id"
-            ] == selected_patient
-        ].copy()
-        if not procedures.empty
-        else pd.DataFrame()
-    )
-
-
-    patient_icu = (
-        icustays[
-            icustays[
-                "subject_id"
-            ] == selected_patient
-        ].copy()
-        if not icustays.empty
-        else pd.DataFrame()
-    )
-
-
-    row = patient.iloc[0]
-
-
-    st.divider()
-
-
-    c1, c2, c3, c4 = st.columns(
-        4
-    )
-
-
-    c1.metric(
-        "Patient",
-        selected_patient
-    )
-
-
-    c2.metric(
-        "Gender",
-        row.get(
-            "gender",
-            "N/A"
-        )
-    )
-
-
-    c3.metric(
-        "Anchor age",
-        row.get(
-            "anchor_age",
-            "N/A"
-        )
-    )
-
-
-    c4.metric(
-        "Admissions",
-        len(
-            patient_admissions
-        )
-    )
-
-
-    tabs = st.tabs(
-        [
-            "Demographics",
-            "Admissions",
-            "Diagnoses",
-            "Laboratory",
-            "Medications",
-            "Procedures",
-            "ICU"
-        ]
-    )
-
-
-    # --------------------------------------------------------
-    # DEMOGRAPHICS
-    # --------------------------------------------------------
-
-    with tabs[0]:
-
-        st.dataframe(
-            patient,
-            use_container_width=True,
-            hide_index=True
-        )
-
-
-    # --------------------------------------------------------
-    # ADMISSIONS
-    # --------------------------------------------------------
-
-    with tabs[1]:
-
-        if patient_admissions.empty:
-
-            st.info(
-                "No admissions found."
-            )
-
-        else:
-
-            st.dataframe(
-                patient_admissions,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-    # --------------------------------------------------------
-    # DIAGNOSES
-    # --------------------------------------------------------
-
-    with tabs[2]:
-
-        if patient_diagnoses.empty:
-
-            st.info(
-                "No diagnoses found."
-            )
-
-        else:
-
-            dx = (
-                patient_diagnoses.copy()
-            )
-
-
-            if not diagnosis_dictionary.empty:
-
-                dx = dx.merge(
-                    diagnosis_dictionary,
-                    on=[
-                        "icd_code",
-                        "icd_version"
-                    ],
-                    how="left"
-                )
-
-
-            st.dataframe(
-                dx,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-    # --------------------------------------------------------
-    # LABS
-    # --------------------------------------------------------
-
-    with tabs[3]:
-
-        if patient_labs.empty:
-
-            st.info(
-                "No laboratory results."
-            )
-
-        else:
-
-            labs = (
-                patient_labs.copy()
-            )
-
-
-            if not lab_dictionary.empty:
-
-                lab_cols = [
-                    c
-                    for c in [
-                        "itemid",
-                        "label",
-                        "fluid",
-                        "category"
-                    ]
-                    if c in lab_dictionary.columns
-                ]
-
-
-                labs = labs.merge(
-                    lab_dictionary[
-                        lab_cols
-                    ],
-                    on="itemid",
-                    how="left"
-                )
-
-
-            st.dataframe(
-                labs,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-    # --------------------------------------------------------
-    # MEDICATIONS
-    # --------------------------------------------------------
-
-    with tabs[4]:
-
-        if patient_prescriptions.empty:
-
-            st.info(
-                "No medication records."
-            )
-
-        else:
-
-            st.dataframe(
-                patient_prescriptions,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-    # --------------------------------------------------------
-    # PROCEDURES
-    # --------------------------------------------------------
-
-    with tabs[5]:
-
-        if patient_procedures.empty:
-
-            st.info(
-                "No procedure records."
-            )
-
-        else:
-
-            proc = (
-                patient_procedures.copy()
-            )
-
-
-            if not procedure_dictionary.empty:
-
-                proc = proc.merge(
-                    procedure_dictionary,
-                    on=[
-                        "icd_code",
-                        "icd_version"
-                    ],
-                    how="left"
-                )
-
-
-            st.dataframe(
-                proc,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-    # --------------------------------------------------------
-    # ICU
-    # --------------------------------------------------------
-
-    with tabs[6]:
-
-        if patient_icu.empty:
-
-            st.info(
-                "No ICU stay."
-            )
-
-        else:
-
-            st.dataframe(
-                patient_icu,
-                use_container_width=True,
-                hide_index=True
-            )
-
-
-# ============================================================
-# PAGE 2
-#
-# MIMIC STROKE COHORT
-# ============================================================
-
-elif page == "MIMIC Stroke Cohort":
-
-    st.title(
-        "🧠 MIMIC-IV Stroke Cohort"
-    )
-
-    st.caption(
-        "Stroke diagnoses identified from "
-        "MIMIC-IV ICD diagnosis records."
-    )
-
-
-    if stroke_cohort.empty:
-
-        st.warning(
-            "No stroke records were identified."
-        )
-
-        st.stop()
-
-
-    selected_type = st.selectbox(
-        "Stroke type",
-        [
-            "All",
-            "Ischemic stroke",
-            "Hemorrhagic stroke",
-            "Unspecified stroke"
-        ]
-    )
-
-
-    if selected_type == "All":
-
-        filtered = (
-            stroke_cohort.copy()
-        )
-
-    else:
-
-        filtered = (
-            stroke_cohort[
-                stroke_cohort[
-                    "stroke_type"
-                ] == selected_type
-            ].copy()
-        )
-
-
-    c1, c2, c3 = st.columns(
-        3
-    )
-
-
-    c1.metric(
-        "Patients",
-        filtered[
-            "subject_id"
-        ].nunique()
-    )
-
-
-    c2.metric(
-        "Admissions",
-        filtered[
-            "hadm_id"
-        ].nunique()
-    )
-
-
-    c3.metric(
-        "Diagnosis records",
-        len(
-            filtered
-        )
-    )
-
-
-    st.divider()
-
-
-    display_columns = [
-        c
-        for c in [
-            "subject_id",
-            "hadm_id",
-            "gender",
-            "anchor_age",
-            "stroke_type",
-            "icd_code",
-            "icd_version",
-            "long_title",
-            "admittime",
-            "dischtime",
-            "hospital_expire_flag"
-        ]
-        if c in filtered.columns
-    ]
-
-
-    st.dataframe(
-        filtered[
-            display_columns
-        ],
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-    st.divider()
-
-
-    st.subheader(
-        "Inspect Stroke Patient"
-    )
-
-
-    stroke_ids = sorted(
-        filtered[
-            "subject_id"
-        ]
-        .dropna()
-        .unique()
-    )
-
-
-    selected_stroke = st.selectbox(
-        "Select patient",
-        stroke_ids
-    )
-
-
-    selected_records = (
-        filtered[
-            filtered[
-                "subject_id"
-            ] == selected_stroke
-        ]
-    )
-
-
-    st.dataframe(
-        selected_records[
-            display_columns
-        ],
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-    st.info(
-        "NIHSS is not assumed to be available as a "
-        "structured field for every MIMIC-IV patient. "
-        "The synthetic Stroke AI cohort contains explicit "
-        "baseline NIHSS for development and simulation."
+    st.sidebar.success(
+        "Local research mode"
     )
 
 
 # ============================================================
-# PAGE 3
-#
 # STROKE AI SIMULATOR
 # ============================================================
 
-elif page == "Stroke AI Simulator":
+if page == "Stroke AI Simulator":
 
     st.title(
-        "🧠 Stroke AI Decision-Support Simulator"
+        "🧠 AdaptStroke AI"
+    )
+
+    st.subheader(
+        "Adaptive Stroke Decision-Support Simulator"
     )
 
     st.caption(
-        "Synthetic ASEAN-oriented ischemic stroke "
-        "research cohort"
+        "Prediction • Dynamic Updating • "
+        "Explainability • Counterfactual Simulation"
     )
 
 
     st.warning(
         "Research prototype only. "
-        "Patients beginning with S are synthetic. "
-        "Predictions are generated from models trained "
-        "on synthetic data and are not clinically validated."
+        "All S-prefixed patients are synthetic. "
+        "The models are trained on synthetic data and "
+        "have not been clinically validated."
     )
 
+
+    # --------------------------------------------------------
+    # CHECK FILES
+    # --------------------------------------------------------
 
     if synthetic_df.empty:
 
         st.error(
-            "Synthetic dataset was not found."
-        )
-
-        st.write(
-            f"Expected file: {SYNTHETIC_FILE}"
+            "Synthetic stroke dataset is unavailable."
         )
 
         st.stop()
+
+
+    models = [
+        M1,
+        M2,
+        M3,
+        M4,
+        M5
+    ]
 
 
     if any(
         model is None
-        for model in [
-            M1,
-            M2,
-            M3,
-            M4,
-            M5
-        ]
+        for model in models
     ):
 
         st.error(
-            "One or more trained model files "
-            "could not be found."
-        )
-
-        st.write(
-            f"Expected folder: {MODEL_DIR}"
+            "One or more trained AI model files "
+            "are unavailable."
         )
 
         st.stop()
 
 
     # ========================================================
-    # PATIENT SELECTOR
+    # PATIENT SELECTION
     # ========================================================
 
-    synthetic_ids = (
+    st.header(
+        "1. Patient Selection"
+    )
+
+
+    patient_ids = (
         synthetic_df[
             "stroke_id"
         ]
@@ -1168,8 +837,8 @@ elif page == "Stroke AI Simulator":
 
 
     selected_id = st.selectbox(
-        "Select synthetic stroke patient",
-        synthetic_ids
+        "Synthetic patient",
+        patient_ids
     )
 
 
@@ -1177,7 +846,8 @@ elif page == "Stroke AI Simulator":
         synthetic_df[
             synthetic_df[
                 "stroke_id"
-            ] == selected_id
+            ].astype(str)
+            == selected_id
         ]
         .iloc[0]
         .copy()
@@ -1188,15 +858,8 @@ elif page == "Stroke AI Simulator":
     # PATIENT PROFILE
     # ========================================================
 
-    st.divider()
-
     st.header(
-        f"Patient {selected_id}"
-    )
-
-
-    st.caption(
-        "S = Synthetic stroke patient"
+        "2. Patient Profile"
     )
 
 
@@ -1207,37 +870,32 @@ elif page == "Stroke AI Simulator":
 
     c1.metric(
         "Age",
-        int(
-            patient[
-                "age"
-            ]
+        safe_int(
+            patient["age"]
         )
     )
 
-
     c2.metric(
         "Sex",
-        patient[
-            "sex"
-        ]
+        patient["sex"]
     )
-
 
     c3.metric(
         "Baseline NIHSS",
-        int(
+        safe_int(
             patient[
                 "baseline_nihss"
             ]
         )
     )
 
-
     c4.metric(
-        "NIHSS severity",
-        patient[
-            "nihss_severity"
-        ]
+        "ASPECTS",
+        safe_int(
+            patient[
+                "aspects"
+            ]
+        )
     )
 
 
@@ -1247,260 +905,115 @@ elif page == "Stroke AI Simulator":
 
 
     c1.metric(
-        "ASPECTS",
-        int(
-            patient[
-                "aspects"
-            ]
-        )
-    )
-
-
-    c2.metric(
         "Pre-stroke mRS",
-        int(
+        safe_int(
             patient[
                 "prestroke_mrs"
             ]
         )
     )
 
+    c2.metric(
+        "Glucose",
+        (
+            f"{safe_float(patient['admission_glucose_mmol_l']):.1f} "
+            f"mmol/L"
+        )
+    )
 
     c3.metric(
-        "Glucose",
-        f"{patient['admission_glucose_mmol_l']:.1f} mmol/L"
+        "SBP",
+        (
+            f"{safe_int(patient['systolic_bp'])} "
+            f"mmHg"
+        )
     )
-
 
     c4.metric(
-        "SBP",
-        f"{int(patient['systolic_bp'])} mmHg"
+        "LVO",
+        yes_no(
+            patient[
+                "large_vessel_occlusion"
+            ]
+        )
     )
 
 
-    # ========================================================
-    # CLINICAL PROFILE
-    # ========================================================
-
     with st.expander(
-        "View complete clinical profile"
+        "Complete clinical profile"
     ):
+
+        fields = [
+
+            "country",
+            "age",
+            "sex",
+
+            "hypertension",
+            "diabetes",
+            "atrial_fibrillation",
+            "prior_stroke",
+            "dyslipidemia",
+            "smoking",
+
+            "prestroke_mrs",
+
+            "baseline_nihss",
+            "nihss_severity",
+
+            "stroke_territory",
+            "toast_subtype",
+
+            "large_vessel_occlusion",
+            "aspects",
+
+            "systolic_bp",
+            "diastolic_bp",
+
+            "admission_glucose_mmol_l",
+            "hba1c",
+            "platelets_10e9_l",
+            "inr",
+            "creatinine_umol_l",
+
+            "onset_to_door_min",
+
+            "iv_thrombolysis",
+            "door_to_needle_min",
+
+            "mechanical_thrombectomy",
+            "tici_score",
+            "successful_recanalisation",
+
+            "hemorrhagic_transformation",
+            "ht_subtype",
+            "symptomatic_ich",
+
+            "discharge_nihss",
+            "discharge_mrs",
+
+            "mrs_90d",
+            "mortality_90d"
+        ]
+
+
+        fields = [
+            field
+            for field in fields
+            if field in patient.index
+        ]
+
 
         profile = pd.DataFrame(
             {
-                "Variable": [
+                "Variable":
+                    fields,
 
-                    "Country",
-                    "Age",
-                    "Sex",
-
-                    "Hypertension",
-                    "Diabetes",
-                    "Atrial fibrillation",
-                    "Prior stroke",
-                    "Dyslipidemia",
-                    "Smoking",
-
-                    "Pre-stroke mRS",
-                    "Baseline NIHSS",
-                    "NIHSS severity",
-
-                    "Stroke territory",
-                    "TOAST subtype",
-
-                    "Large vessel occlusion",
-                    "ASPECTS",
-
-                    "Systolic BP",
-                    "Diastolic BP",
-
-                    "Admission glucose",
-                    "HbA1c",
-                    "Platelets",
-                    "INR",
-                    "Creatinine",
-
-                    "Onset-to-door",
-
-                    "IV thrombolysis",
-                    "Mechanical thrombectomy",
-
-                    "Successful recanalisation",
-
-                    "HT",
-                    "HT subtype",
-                    "sICH",
-
-                    "Discharge NIHSS",
-                    "Observed discharge mRS",
-                    "Observed 90-day mRS",
-                    "Observed 90-day mortality"
-                ],
-
-                "Value": [
-
-                    patient[
-                        "country"
-                    ],
-
-                    patient[
-                        "age"
-                    ],
-
-                    patient[
-                        "sex"
-                    ],
-
-                    yes_no(
-                        patient[
-                            "hypertension"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "diabetes"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "atrial_fibrillation"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "prior_stroke"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "dyslipidemia"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "smoking"
-                        ]
-                    ),
-
-                    patient[
-                        "prestroke_mrs"
-                    ],
-
-                    patient[
-                        "baseline_nihss"
-                    ],
-
-                    patient[
-                        "nihss_severity"
-                    ],
-
-                    patient[
-                        "stroke_territory"
-                    ],
-
-                    patient[
-                        "toast_subtype"
-                    ],
-
-                    yes_no(
-                        patient[
-                            "large_vessel_occlusion"
-                        ]
-                    ),
-
-                    patient[
-                        "aspects"
-                    ],
-
-                    patient[
-                        "systolic_bp"
-                    ],
-
-                    patient[
-                        "diastolic_bp"
-                    ],
-
-                    patient[
-                        "admission_glucose_mmol_l"
-                    ],
-
-                    patient[
-                        "hba1c"
-                    ],
-
-                    patient[
-                        "platelets_10e9_l"
-                    ],
-
-                    patient[
-                        "inr"
-                    ],
-
-                    patient[
-                        "creatinine_umol_l"
-                    ],
-
-                    patient[
-                        "onset_to_door_min"
-                    ],
-
-                    yes_no(
-                        patient[
-                            "iv_thrombolysis"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "mechanical_thrombectomy"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "successful_recanalisation"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "hemorrhagic_transformation"
-                        ]
-                    ),
-
-                    patient[
-                        "ht_subtype"
-                    ],
-
-                    yes_no(
-                        patient[
-                            "symptomatic_ich"
-                        ]
-                    ),
-
-                    patient[
-                        "discharge_nihss"
-                    ],
-
-                    patient[
-                        "discharge_mrs"
-                    ],
-
-                    patient[
-                        "mrs_90d"
-                    ],
-
-                    yes_no(
-                        patient[
-                            "mortality_90d"
-                        ]
-                    )
-                ]
+                "Value":
+                    [
+                        patient[field]
+                        for field in fields
+                    ]
             }
         )
 
@@ -1513,53 +1026,37 @@ elif page == "Stroke AI Simulator":
 
 
     # ========================================================
-    # RUN ORIGINAL PREDICTIONS
+    # PREDICTIONS
     # ========================================================
 
-    ht_probability = predict_binary(
+    ht_risk = predict_binary(
         patient,
         M1
     )
-
 
     early_mrs = predict_mrs(
         patient,
         M2
     )
 
-
     updated_mrs = predict_mrs(
         patient,
         M3
     )
 
-
-    mrs_90 = predict_mrs(
+    mrs90 = predict_mrs(
         patient,
         M4
     )
 
-
-    mortality_probability = predict_binary(
+    mortality = predict_binary(
         patient,
         M5
     )
 
 
-    # ========================================================
-    # AI PREDICTIONS
-    # ========================================================
-
-    st.divider()
-
     st.header(
-        "AI Predictions"
-    )
-
-
-    st.caption(
-        "Predictions shown below are generated "
-        "by the saved machine-learning models."
+        "3. AI Prediction"
     )
 
 
@@ -1569,14 +1066,13 @@ elif page == "Stroke AI Simulator":
 
 
     c1.metric(
-        "HT risk",
-        f"{ht_probability * 100:.1f}%"
+        "Hemorrhagic transformation",
+        f"{ht_risk * 100:.1f}%"
     )
-
 
     c1.caption(
         risk_label(
-            ht_probability
+            ht_risk
         )
     )
 
@@ -1586,9 +1082,8 @@ elif page == "Stroke AI Simulator":
         early_mrs
     )
 
-
     c2.caption(
-        "Prediction using admission information"
+        "Admission-time prediction"
     )
 
 
@@ -1597,9 +1092,8 @@ elif page == "Stroke AI Simulator":
         updated_mrs
     )
 
-
     c3.caption(
-        "Updated using hospitalization information"
+        "Updated during hospitalization"
     )
 
 
@@ -1610,253 +1104,258 @@ elif page == "Stroke AI Simulator":
 
     c1.metric(
         "Predicted 90-day mRS",
-        mrs_90
+        mrs90
     )
 
 
     c2.metric(
-        "90-day mortality risk",
-        f"{mortality_probability * 100:.1f}%"
+        "90-day mortality",
+        f"{mortality * 100:.1f}%"
     )
-
 
     c2.caption(
         risk_label(
-            mortality_probability
+            mortality
         )
     )
 
 
-    # ========================================================
-    # OBSERVED SYNTHETIC OUTCOMES
-    # ========================================================
-
-    with st.expander(
-        "Compare predictions with synthetic outcomes"
-    ):
-
-        comparison = pd.DataFrame(
-            {
-                "Outcome": [
-
-                    "Hemorrhagic transformation",
-
-                    "Discharge mRS",
-
-                    "90-day mRS",
-
-                    "90-day mortality"
-                ],
-
-                "Synthetic outcome": [
-
-                    yes_no(
-                        patient[
-                            "hemorrhagic_transformation"
-                        ]
-                    ),
-
-                    int(
-                        patient[
-                            "discharge_mrs"
-                        ]
-                    ),
-
-                    int(
-                        patient[
-                            "mrs_90d"
-                        ]
-                    ),
-
-                    yes_no(
-                        patient[
-                            "mortality_90d"
-                        ]
-                    )
-                ],
-
-                "Model prediction": [
-
-                    (
-                        f"{ht_probability * 100:.1f}% risk"
-                    ),
-
-                    (
-                        f"{early_mrs} early / "
-                        f"{updated_mrs} updated"
-                    ),
-
-                    mrs_90,
-
-                    (
-                        f"{mortality_probability * 100:.1f}% risk"
-                    )
-                ]
-            }
-        )
-
-
-        st.dataframe(
-            comparison,
-            use_container_width=True,
-            hide_index=True
-        )
+    st.caption(
+        "Displayed risk bands are prototype "
+        "visualisation categories and are not "
+        "validated clinical thresholds."
+    )
 
 
     # ========================================================
-    # DYNAMIC PREDICTION
+    # DYNAMIC / ADAPTIVE PREDICTION
     # ========================================================
-
-    st.divider()
 
     st.header(
-        "Dynamic Prediction"
+        "4. Dynamic Prediction Update"
     )
 
 
-    col1, col2, col3 = st.columns(
+    c1, c2, c3 = st.columns(
         [2, 1, 2]
     )
 
 
-    with col1:
+    with c1:
 
-        st.subheader(
-            "Admission"
+        st.markdown(
+            "#### Admission"
         )
 
         st.metric(
-            "Predicted discharge mRS",
+            "Expected discharge mRS",
             early_mrs
         )
 
 
-    with col2:
+    with c2:
 
         st.markdown(
-            "### →"
+            "## →"
         )
 
 
-    with col3:
+    with c3:
 
-        st.subheader(
-            "Updated"
+        st.markdown(
+            "#### Updated"
         )
 
-        delta = (
+        difference = (
             updated_mrs
             - early_mrs
         )
 
 
         st.metric(
-            "Predicted discharge mRS",
+            "Expected discharge mRS",
             updated_mrs,
-            delta=delta,
+            delta=difference,
             delta_color="inverse"
         )
 
 
-    new_information = []
+    update_events = []
 
 
-    if int(
+    if safe_int(
         patient[
             "hemorrhagic_transformation"
         ]
     ) == 1:
 
-        new_information.append(
-            "Hemorrhagic transformation detected"
+        update_events.append(
+            "Hemorrhagic transformation became available."
         )
 
 
-    if int(
+    if safe_int(
         patient[
             "symptomatic_ich"
         ]
     ) == 1:
 
-        new_information.append(
-            "Symptomatic intracranial hemorrhage detected"
+        update_events.append(
+            "Symptomatic intracranial hemorrhage became available."
         )
 
 
-    if int(
+    if safe_int(
         patient[
             "mechanical_thrombectomy"
         ]
     ) == 1:
 
-        if int(
+        if safe_int(
             patient[
                 "successful_recanalisation"
             ]
         ) == 1:
 
-            new_information.append(
-                "Successful recanalisation"
+            update_events.append(
+                "Successful recanalisation was recorded."
             )
 
         else:
 
-            new_information.append(
-                "Recanalisation not successful"
+            update_events.append(
+                "Successful recanalisation was not recorded."
             )
 
 
-    if len(
-        new_information
-    ) > 0:
+    if update_events:
 
         st.write(
-            "**New hospitalization information:**"
+            "**Information incorporated during updating:**"
         )
 
-        for item in new_information:
+        for event in update_events:
 
             st.write(
-                f"• {item}"
+                f"• {event}"
             )
 
     else:
 
         st.write(
-            "No major simulated complication/update "
-            "recorded for this patient."
+            "No predefined major hospitalization event "
+            "was recorded for this synthetic patient."
         )
 
 
     # ========================================================
-    # COUNTERFACTUAL SIMULATOR
+    # MODEL EXPLAINABILITY
     # ========================================================
 
-    st.divider()
-
     st.header(
-        "Counterfactual Scenario Simulator"
+        "5. Model Explainability"
     )
 
 
     st.write(
-        "Change selected modifiable or scenario variables "
-        "and rerun the HT model. This demonstrates how the "
-        "model-estimated risk changes under an alternative "
-        "patient scenario."
+        "The following analysis estimates which patient "
+        "variables most influence this patient's HT prediction "
+        "by replacing one variable at a time with the cohort "
+        "reference value."
     )
+
+
+    explanation = local_binary_explanation(
+        patient,
+        M1,
+        synthetic_df,
+        max_features=8
+    )
+
+
+    if not explanation.empty:
+
+        display_explanation = (
+            explanation.copy()
+        )
+
+
+        display_explanation[
+            "Effect on HT risk (percentage points)"
+        ] = (
+            display_explanation[
+                "Local contribution"
+            ]
+            * 100
+        ).round(2)
+
+
+        display_explanation[
+            "Direction"
+        ] = np.where(
+            display_explanation[
+                "Local contribution"
+            ] > 0,
+            "Associated with higher model estimate",
+            "Associated with lower model estimate"
+        )
+
+
+        st.dataframe(
+            display_explanation[
+                [
+                    "Feature",
+                    "Patient value",
+                    "Reference value",
+                    "Effect on HT risk (percentage points)",
+                    "Direction"
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+        chart_data = (
+            display_explanation[
+                [
+                    "Feature",
+                    "Effect on HT risk (percentage points)"
+                ]
+            ]
+            .set_index(
+                "Feature"
+            )
+        )
+
+
+        st.bar_chart(
+            chart_data
+        )
 
 
     st.info(
-        "A counterfactual model scenario is not the same "
-        "as evidence that changing a variable will cause "
-        "the predicted clinical benefit."
+        "These values describe model sensitivity. "
+        "They are not estimates of causal effects."
     )
 
 
-    scenario_patient = (
-        patient.copy()
+    # ========================================================
+    # COUNTERFACTUAL SIMULATION
+    # ========================================================
+
+    st.header(
+        "6. Constrained Counterfactual Simulator"
     )
+
+
+    st.write(
+        "Explore alternative values for selected variables "
+        "while keeping the remaining patient profile unchanged."
+    )
+
+
+    scenario = patient.copy()
 
 
     c1, c2 = st.columns(
@@ -1866,79 +1365,80 @@ elif page == "Stroke AI Simulator":
 
     with c1:
 
-        scenario_glucose = st.slider(
+        glucose = st.slider(
             "Admission glucose (mmol/L)",
-            min_value=3.0,
-            max_value=20.0,
-            value=float(
+            3.0,
+            20.0,
+            safe_float(
                 patient[
                     "admission_glucose_mmol_l"
-                ]
+                ],
+                7.0
             ),
-            step=0.1
+            0.1
         )
 
 
-        scenario_sbp = st.slider(
-            "Systolic BP (mmHg)",
-            min_value=80,
-            max_value=240,
-            value=int(
+        sbp = st.slider(
+            "Systolic blood pressure (mmHg)",
+            80,
+            240,
+            safe_int(
                 patient[
                     "systolic_bp"
-                ]
+                ],
+                140
             ),
-            step=1
+            1
         )
 
 
     with c2:
 
-        scenario_onset = st.slider(
+        onset = st.slider(
             "Onset-to-door time (minutes)",
-            min_value=20,
-            max_value=720,
-            value=int(
-                patient[
-                    "onset_to_door_min"
-                ]
+            20,
+            720,
+            max(
+                20,
+                min(
+                    720,
+                    safe_int(
+                        patient[
+                            "onset_to_door_min"
+                        ],
+                        120
+                    )
+                )
             ),
-            step=5
+            5
         )
 
 
-        current_dtn = patient[
-            "door_to_needle_min"
-        ]
-
-
-        if pd.isna(
-            current_dtn
-        ):
-
-            default_dtn = 60
-
-        else:
-
-            default_dtn = int(
-                current_dtn
+        current_dtn = (
+            safe_int(
+                patient[
+                    "door_to_needle_min"
+                ],
+                60
             )
+        )
 
 
-        scenario_dtn = st.slider(
+        door_to_needle = st.slider(
             "Door-to-needle time (minutes)",
-            min_value=20,
-            max_value=180,
-            value=max(
+            20,
+            180,
+            max(
                 20,
                 min(
                     180,
-                    default_dtn
+                    current_dtn
                 )
             ),
-            step=5,
+            5,
             disabled=(
-                int(
+                safe_int(
                     patient[
                         "iv_thrombolysis"
                     ]
@@ -1947,46 +1447,39 @@ elif page == "Stroke AI Simulator":
         )
 
 
-    scenario_patient[
+    scenario[
         "admission_glucose_mmol_l"
-    ] = scenario_glucose
+    ] = glucose
 
-
-    scenario_patient[
+    scenario[
         "systolic_bp"
-    ] = scenario_sbp
+    ] = sbp
 
-
-    scenario_patient[
+    scenario[
         "onset_to_door_min"
-    ] = scenario_onset
+    ] = onset
 
 
-    if int(
+    if safe_int(
         patient[
             "iv_thrombolysis"
         ]
     ) == 1:
 
-        scenario_patient[
+        scenario[
             "door_to_needle_min"
-        ] = scenario_dtn
+        ] = door_to_needle
 
 
     scenario_ht = predict_binary(
-        scenario_patient,
+        scenario,
         M1
     )
 
 
-    risk_difference = (
+    risk_change = (
         scenario_ht
-        - ht_probability
-    )
-
-
-    st.subheader(
-        "Scenario Result"
+        - ht_risk
     )
 
 
@@ -1996,227 +1489,264 @@ elif page == "Stroke AI Simulator":
 
 
     c1.metric(
-        "Current HT risk",
-        f"{ht_probability * 100:.1f}%"
+        "Current model estimate",
+        f"{ht_risk * 100:.1f}%"
     )
 
 
     c2.metric(
-        "Scenario HT risk",
+        "Alternative scenario",
         f"{scenario_ht * 100:.1f}%"
     )
 
 
     c3.metric(
-        "Risk difference",
-        f"{risk_difference * 100:+.1f} pp",
+        "Difference",
+        f"{risk_change * 100:+.1f} pp",
         delta_color="inverse"
     )
 
 
-    # ========================================================
-    # NON-MODIFIABLE / BASELINE FACTORS
-    # ========================================================
-
-    st.subheader(
-        "Baseline Risk Context"
+    st.warning(
+        "The difference is a model-based counterfactual "
+        "scenario, not a treatment effect."
     )
 
 
-    context = []
+    # ========================================================
+    # COUNTERFACTUAL TRAJECTORY
+    # ========================================================
+
+    st.subheader(
+        "Scenario Risk Trajectory"
+    )
 
 
-    if patient[
-        "baseline_nihss"
-    ] >= 16:
+    glucose_values = np.linspace(
+        4,
+        15,
+        30
+    )
 
-        context.append(
-            "Higher baseline neurological severity "
-            "(NIHSS ≥16)"
+
+    trajectory = []
+
+
+    for value in glucose_values:
+
+        temp_patient = patient.copy()
+
+        temp_patient[
+            "admission_glucose_mmol_l"
+        ] = value
+
+
+        temp_risk = predict_binary(
+            temp_patient,
+            M1
         )
 
 
-    elif patient[
-        "baseline_nihss"
-    ] >= 6:
+        trajectory.append(
+            {
+                "Glucose":
+                    value,
 
-        context.append(
-            "Moderate baseline neurological deficit"
+                "HT risk (%)":
+                    temp_risk * 100
+            }
         )
 
 
-    if patient[
-        "aspects"
-    ] <= 6:
+    trajectory_df = pd.DataFrame(
+        trajectory
+    )
 
-        context.append(
-            "Lower ASPECTS"
+
+    st.line_chart(
+        trajectory_df,
+        x="Glucose",
+        y="HT risk (%)"
+    )
+
+
+    st.caption(
+        "This trajectory shows the trained model's response "
+        "to changing glucose while holding other variables "
+        "constant. It does not demonstrate causality."
+    )
+
+
+    # ========================================================
+    # DECISION SUPPORT
+    # ========================================================
+
+    st.header(
+        "7. Human-in-the-Loop Decision Support"
+    )
+
+
+    st.write(
+        "The platform separates model prediction from "
+        "clinical interpretation."
+    )
+
+
+    findings = []
+
+
+    if ht_risk >= 0.20:
+
+        findings.append(
+            "The model produces a comparatively higher "
+            "HT estimate for this synthetic patient."
         )
 
 
-    if int(
+    if safe_float(
+        patient[
+            "admission_glucose_mmol_l"
+        ]
+    ) > 10:
+
+        findings.append(
+            "Admission glucose is elevated in the "
+            "synthetic patient profile."
+        )
+
+
+    if safe_int(
+        patient[
+            "baseline_nihss"
+        ]
+    ) >= 16:
+
+        findings.append(
+            "The patient has a high baseline NIHSS "
+            "within this simulated cohort."
+        )
+
+
+    if safe_int(
+        patient[
+            "aspects"
+        ]
+    ) <= 6:
+
+        findings.append(
+            "The patient has a relatively low ASPECTS "
+            "within the simulated profile."
+        )
+
+
+    if safe_int(
         patient[
             "atrial_fibrillation"
         ]
     ) == 1:
 
-        context.append(
-            "Atrial fibrillation present"
+        findings.append(
+            "Atrial fibrillation is present."
         )
 
 
-    if int(
-        patient[
-            "diabetes"
-        ]
-    ) == 1:
-
-        context.append(
-            "Diabetes present"
-        )
-
-
-    if int(
-        patient[
-            "prior_stroke"
-        ]
-    ) == 1:
-
-        context.append(
-            "History of previous stroke"
-        )
-
-
-    if int(
+    if safe_int(
         patient[
             "large_vessel_occlusion"
         ]
     ) == 1:
 
-        context.append(
-            "Large vessel occlusion present"
+        findings.append(
+            "Large vessel occlusion is present."
         )
 
 
-    if len(
-        context
-    ) == 0:
+    if not findings:
+
+        findings.append(
+            "No predefined high-priority prototype flag "
+            "was triggered."
+        )
+
+
+    for finding in findings:
 
         st.write(
-            "No predefined major baseline flags "
-            "were triggered."
+            f"• {finding}"
         )
 
-    else:
-
-        for item in context:
-
-            st.write(
-                f"• {item}"
-            )
-
-
-    # ========================================================
-    # DECISION-SUPPORT INTERPRETATION
-    # ========================================================
-
-    st.divider()
-
-    st.header(
-        "Decision-Support Interpretation"
-    )
-
-
-    if scenario_ht < ht_probability:
-
-        direction_text = (
-            f"The alternative scenario produced a "
-            f"{abs(risk_difference) * 100:.1f} "
-            f"percentage-point reduction in the "
-            f"model-estimated HT risk."
-        )
-
-
-    elif scenario_ht > ht_probability:
-
-        direction_text = (
-            f"The alternative scenario produced a "
-            f"{abs(risk_difference) * 100:.1f} "
-            f"percentage-point increase in the "
-            f"model-estimated HT risk."
-        )
-
-
-    else:
-
-        direction_text = (
-            "The alternative scenario did not materially "
-            "change the model-estimated HT risk."
-        )
-
-
-    st.write(
-        f"""
-The model estimates the current hemorrhagic transformation
-risk at **{ht_probability * 100:.1f}%**.
-
-The admission model predicts a discharge mRS of
-**{early_mrs}**. After hospitalization information is
-included, the updated prediction is **{updated_mrs}**.
-
-The model predicts a 90-day mRS of **{mrs_90}** and a
-90-day mortality risk of **{mortality_probability * 100:.1f}%**.
-
-{direction_text}
-"""
-    )
-
-
-    st.warning(
-        "The scenario result represents an association "
-        "learned from synthetic data. It must not be "
-        "interpreted as a causal treatment effect."
-    )
-
-
-    # ========================================================
-    # FUTURE LLM / RAG SECTION
-    # ========================================================
 
     st.subheader(
-        "Evidence-Grounded Recommendation Layer"
+        "Counterfactual interpretation"
+    )
+
+
+    if risk_change < -0.005:
+
+        st.write(
+            f"The alternative scenario is associated with "
+            f"a {abs(risk_change) * 100:.1f} percentage-point "
+            f"lower model-estimated HT risk."
+        )
+
+    elif risk_change > 0.005:
+
+        st.write(
+            f"The alternative scenario is associated with "
+            f"a {abs(risk_change) * 100:.1f} percentage-point "
+            f"higher model-estimated HT risk."
+        )
+
+    else:
+
+        st.write(
+            "The selected alternative scenario produces "
+            "little change in the model-estimated HT risk."
+        )
+
+
+    # ========================================================
+    # EVIDENCE / LLM ARCHITECTURE
+    # ========================================================
+
+    st.header(
+        "8. Evidence-Grounded Explanation"
     )
 
 
     st.write(
         """
-The next development stage can connect this section to a
-retrieval-augmented LLM. The LLM should receive:
+The intended decision-support workflow is:
 
-1. the patient profile,
-2. prediction results,
-3. model explanations,
-4. constrained counterfactual scenarios, and
-5. retrieved stroke-management guidance.
+**Patient data → predictive model → model explanation →
+constrained counterfactual simulation → retrieved clinical
+evidence → clinician review.**
 
-The LLM should explain the evidence and possible clinical
-considerations rather than independently prescribe treatment.
+A generative AI layer can subsequently convert these outputs
+and retrieved evidence into a concise explanation. It should
+not independently determine treatment.
 """
     )
 
 
+    st.info(
+        "The current public prototype intentionally does not "
+        "generate autonomous medication or treatment orders."
+    )
+
+
     # ========================================================
-    # MODEL INFORMATION
+    # MODEL TRANSPARENCY
     # ========================================================
 
     with st.expander(
-        "Model information"
+        "Model transparency"
     ):
 
-        model_information = []
+        rows = []
 
 
-        for name, model in [
+        for model_name, model in [
 
             (
                 "M1 HT Risk",
@@ -2244,10 +1774,16 @@ considerations rather than independently prescribe treatment.
             )
         ]:
 
-            model_information.append(
+            metrics = model.get(
+                "metrics",
+                {}
+            )
+
+
+            rows.append(
                 {
                     "Model":
-                        name,
+                        model_name,
 
                     "Algorithm":
                         model.get(
@@ -2267,15 +1803,226 @@ considerations rather than independently prescribe treatment.
                                 "features",
                                 []
                             )
+                        ),
+
+                    "AUROC":
+                        metrics.get(
+                            "AUROC",
+                            np.nan
+                        ),
+
+                    "MAE":
+                        metrics.get(
+                            "MAE_mRS",
+                            np.nan
+                        ),
+
+                    "QWK":
+                        metrics.get(
+                            "quadratic_weighted_kappa",
+                            np.nan
                         )
                 }
             )
 
 
+        transparency_df = pd.DataFrame(
+            rows
+        )
+
+
         st.dataframe(
-            pd.DataFrame(
-                model_information
-            ),
+            transparency_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ============================================================
+# MIMIC PATIENT EXPLORER
+# ============================================================
+
+elif page == "MIMIC Patient Explorer":
+
+    st.title(
+        "🏥 MIMIC-IV Patient Explorer"
+    )
+
+
+    patient_ids = sorted(
+        patients[
+            "subject_id"
+        ]
+        .dropna()
+        .unique()
+    )
+
+
+    selected_patient = st.selectbox(
+        "Select patient",
+        patient_ids
+    )
+
+
+    patient_record = patients[
+        patients[
+            "subject_id"
+        ] == selected_patient
+    ]
+
+
+    patient_admissions = admissions[
+        admissions[
+            "subject_id"
+        ] == selected_patient
+    ]
+
+
+    patient_diagnoses = diagnoses[
+        diagnoses[
+            "subject_id"
+        ] == selected_patient
+    ]
+
+
+    st.subheader(
+        "Demographics"
+    )
+
+    st.dataframe(
+        patient_record,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+    st.subheader(
+        "Admissions"
+    )
+
+    st.dataframe(
+        patient_admissions,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+    st.subheader(
+        "Diagnoses"
+    )
+
+
+    if not diagnosis_dictionary.empty:
+
+        patient_diagnoses = (
+            patient_diagnoses.merge(
+                diagnosis_dictionary,
+                on=[
+                    "icd_code",
+                    "icd_version"
+                ],
+                how="left"
+            )
+        )
+
+
+    st.dataframe(
+        patient_diagnoses,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# ============================================================
+# MIMIC STROKE COHORT
+# ============================================================
+
+elif page == "MIMIC Stroke Cohort":
+
+    st.title(
+        "🧠 MIMIC-IV Stroke Cohort"
+    )
+
+
+    if stroke_cohort.empty:
+
+        st.info(
+            "No stroke diagnoses were identified."
+        )
+
+    else:
+
+        c1, c2, c3 = st.columns(
+            3
+        )
+
+
+        c1.metric(
+            "Patients",
+            stroke_cohort[
+                "subject_id"
+            ].nunique()
+        )
+
+
+        c2.metric(
+            "Admissions",
+            stroke_cohort[
+                "hadm_id"
+            ].nunique()
+        )
+
+
+        c3.metric(
+            "Stroke diagnosis records",
+            len(
+                stroke_cohort
+            )
+        )
+
+
+        stroke_types = (
+            stroke_cohort[
+                "stroke_type"
+            ]
+            .value_counts()
+            .rename_axis(
+                "Stroke type"
+            )
+            .reset_index(
+                name="Records"
+            )
+        )
+
+
+        st.bar_chart(
+            stroke_types,
+            x="Stroke type",
+            y="Records"
+        )
+
+
+        display_columns = [
+            column
+            for column in [
+                "subject_id",
+                "hadm_id",
+                "gender",
+                "anchor_age",
+                "stroke_type",
+                "icd_code",
+                "long_title",
+                "admittime",
+                "dischtime"
+            ]
+            if column in stroke_cohort.columns
+        ]
+
+
+        st.dataframe(
+            stroke_cohort[
+                display_columns
+            ],
             use_container_width=True,
             hide_index=True
         )
@@ -2288,6 +2035,6 @@ considerations rather than independently prescribe treatment.
 st.divider()
 
 st.caption(
-    "Stroke AI Decision-Support Research Prototype | "
+    "AdaptStroke AI | Research prototype | "
     "Synthetic models are not clinically validated."
 )
